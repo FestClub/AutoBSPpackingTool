@@ -2,7 +2,7 @@ name: Build AutoBSPpackingTool
 
 on:
   push:
-    branches: [ master, dev]
+    branches: [ main, dev]
     tags: [ 'v*' ]
   pull_request:
     branches: [ master ]
