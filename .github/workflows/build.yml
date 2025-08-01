@@ -27,11 +27,11 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: |
-          4.8.0
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v2
 
     - name: Cache NuGet packages
       uses: actions/cache@v4
@@ -41,31 +41,32 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-nuget-
 
-    - name: Restore dependencies
-      run: dotnet restore
+    - name: Restore NuGet packages
+      run: nuget restore
 
     - name: Build solution
-      run: dotnet build --configuration ${{ matrix.configuration }} --no-restore --verbosity minimal
+      run: msbuild /p:Configuration=${{ matrix.configuration }} /p:Platform="Any CPU" /verbosity:minimal
 
     - name: Run tests (if any)
       run: |
         if (Test-Path "**/*Tests*.csproj") {
-          dotnet test --configuration ${{ matrix.configuration }} --no-build --verbosity minimal --logger trx --collect:"XPlat Code Coverage"
+          # Use VSTest for .NET Framework projects
+          vstest.console.exe **/*Tests*/bin/${{ matrix.configuration }}/**/*Tests*.dll
         } else {
           Write-Host "No test projects found - skipping tests"
         }
       shell: pwsh
       continue-on-error: true
 
-    - name: Publish application
-      if: matrix.configuration == 'Release'
-      run: |
-        dotnet publish --configuration Release --no-build --output ./publish --self-contained true --runtime win-x64
-        
     - name: Create portable package
       if: matrix.configuration == 'Release'
       run: |
-        Compress-Archive -Path "./publish/*" -DestinationPath "./AutoBSPpackingTool-${{ github.ref_name }}-win-x64.zip"
+        # Find the main executable output directory
+        $outputPath = Get-ChildItem -Path . -Recurse -Directory -Name "bin" | Where-Object { $_.Contains("Release") } | Select-Object -First 1
+        if ($outputPath) {
+          $fullPath = Get-ChildItem -Path $outputPath -Recurse -Filter "*.exe" | Select-Object -First 1 | Split-Path -Parent
+          Compress-Archive -Path "$fullPath/*" -DestinationPath "./AutoBSPpackingTool-${{ github.ref_name }}-win-x64.zip"
+        }
       shell: pwsh
 
     - name: Upload build artifacts
@@ -73,7 +74,10 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: AutoBSPpackingTool-${{ github.ref_name }}-win-x64
-        path: ./publish/
+        path: |
+          **/bin/Release/**/*.exe
+          **/bin/Release/**/*.dll
+          **/bin/Release/**/*.config
         retention-days: 30
 
   release:
@@ -85,18 +89,26 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 4.8.0
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
 
-    - name: Build and publish release
-      run: |
-        dotnet publish --configuration Release --output ./release --self-contained true --runtime win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v2
+
+    - name: Restore NuGet packages
+      run: nuget restore
+
+    - name: Build release
+      run: msbuild /p:Configuration=Release /p:Platform="Any CPU" /verbosity:minimal
 
     - name: Create release package
       run: |
-        Compress-Archive -Path "./release/*" -DestinationPath "./AutoBSPpackingTool-${{ github.ref_name }}-win-x64.zip"
+        # Find the main executable output directory
+        $outputPath = Get-ChildItem -Path . -Recurse -Directory -Name "bin" | Where-Object { $_.Contains("Release") } | Select-Object -First 1
+        if ($outputPath) {
+          $fullPath = Get-ChildItem -Path $outputPath -Recurse -Filter "*.exe" | Select-Object -First 1 | Split-Path -Parent
+          Compress-Archive -Path "$fullPath/*" -DestinationPath "./AutoBSPpackingTool-${{ github.ref_name }}-win-x64.zip"
+        }
       shell: pwsh
 
     - name: Create GitHub Release
@@ -120,17 +132,18 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 4.8.0
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
 
-    - name: Restore dependencies
-      run: dotnet restore
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v2
+
+    - name: Restore NuGet packages
+      run: nuget restore
 
     - name: Run code analysis
       run: |
-        dotnet build --configuration Release --verbosity minimal --warnaserror
+        msbuild /p:Configuration=Release /p:Platform="Any CPU" /verbosity:minimal /p:TreatWarningsAsErrors=true
         
     - name: Security scan
       uses: securecodewarrior/github-action-add-sarif@v1
