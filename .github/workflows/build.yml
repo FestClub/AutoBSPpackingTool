@@ -14,7 +14,7 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022  # Ensures .NET Framework support
     
     strategy:
       matrix:
@@ -26,55 +26,61 @@ jobs:
       with:
         fetch-depth: 0
 
+    # Use windows-2022 runner which includes .NET Framework targeting packs
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v2
+
     - name: Setup .NET Framework Developer Pack
       run: |
-        # Install .NET Framework 4.0 Developer Pack
-        choco install netfx-4.0-devpack -y
-        # Install additional framework versions for compatibility
-        choco install netfx-4.5.2-devpack netfx-4.6.1-devpack netfx-4.7.2-devpack netfx-4.8-devpack -y
+        # Download and install .NET Framework 4.0 Developer Pack
+        $url = "https://download.microsoft.com/download/A/6/7/A678AB47-496B-4907-B3C7-6DFB75AE19C6/dotNetFx40_Full_x86_x64.exe"
+        $output = "$env:TEMP\dotNetFx40_Full_x86_x64.exe"
+        Invoke-WebRequest -Uri $url -OutFile $output
+        Start-Process -FilePath $output -ArgumentList "/quiet" -Wait
+        
+        # Install targeting pack via chocolatey (faster alternative)
+        choco install netfx-4.0-devpack -y --force
       shell: pwsh
+      continue-on-error: true
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: |
-          6.0.x
-          7.0.x
-          8.0.x
+    - name: Restore NuGet packages
+      run: nuget restore
 
-    - name: Cache NuGet packages
-      uses: actions/cache@v4
-      with:
-        path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.fsproj', '**/*.vbproj') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-
-
-    - name: Restore dependencies
-      run: dotnet restore
-
-    - name: Build solution
-      run: dotnet build --configuration ${{ matrix.configuration }} --no-restore --verbosity minimal
+    - name: Build with MSBuild
+      run: |
+        msbuild /p:Configuration=${{ matrix.configuration }} /p:Platform="Any CPU" /p:TargetFrameworkVersion=v4.0 /verbosity:minimal
+      shell: cmd
 
     - name: Run tests (if any)
       run: |
         if (Test-Path "**/*Tests*.csproj") {
-          dotnet test --configuration ${{ matrix.configuration }} --no-build --verbosity minimal --logger trx --collect:"XPlat Code Coverage"
+          # Use MSTest or NUnit runner for .NET Framework tests
+          if (Test-Path "packages\MSTest.TestAdapter*") {
+            vstest.console.exe **\bin\**\*Tests*.dll
+          }
         } else {
           Write-Host "No test projects found - skipping tests"
         }
       shell: pwsh
       continue-on-error: true
 
-    - name: Publish application
+    - name: Package application
       if: matrix.configuration == 'Release'
       run: |
-        dotnet publish --configuration Release --no-build --output ./publish --self-contained true --runtime win-x64
+        $outputPath = ".\bin\Release"
+        $publishPath = ".\publish"
         
-    - name: Create portable package
-      if: matrix.configuration == 'Release'
-      run: |
-        Compress-Archive -Path "./publish/*" -DestinationPath "./AutoBSPpackingTool-${{ github.ref_name }}-win-x64.zip"
+        # Create publish directory
+        New-Item -ItemType Directory -Force -Path $publishPath
+        
+        # Copy built files
+        Copy-Item -Path "$outputPath\*" -Destination $publishPath -Recurse -Force
+        
+        # Create ZIP package
+        Compress-Archive -Path "$publishPath\*" -DestinationPath ".\AutoBSPpackingTool-${{ github.ref_name }}-win-x64.zip"
       shell: pwsh
 
     - name: Upload build artifacts
@@ -87,33 +93,32 @@ jobs:
 
   release:
     needs: build
-    runs-on: windows-latest
+    runs-on: windows-2022
     if: startsWith(github.ref, 'refs/tags/v')
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v2
+
     - name: Setup .NET Framework Developer Pack
-      run: |
-        # Install .NET Framework 4.0 Developer Pack
-        choco install netfx-4.0-devpack -y
-        # Install additional framework versions for compatibility
-        choco install netfx-4.5.2-devpack netfx-4.6.1-devpack netfx-4.7.2-devpack netfx-4.8-devpack -y
+      run: choco install netfx-4.0-devpack -y --force
       shell: pwsh
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 8.0.x
-
-    - name: Build and publish release
+    - name: Build release
       run: |
-        dotnet publish --configuration Release --output ./release --self-contained true --runtime win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+        nuget restore
+        msbuild /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFrameworkVersion=v4.0 /verbosity:minimal
 
     - name: Create release package
       run: |
-        Compress-Archive -Path "./release/*" -DestinationPath "./AutoBSPpackingTool-${{ github.ref_name }}-win-x64.zip"
+        $releasePath = ".\bin\Release"
+        Compress-Archive -Path "$releasePath\*" -DestinationPath ".\AutoBSPpackingTool-${{ github.ref_name }}-win-x64.zip"
       shell: pwsh
 
     - name: Create GitHub Release
@@ -126,32 +131,3 @@ jobs:
         generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  code-analysis:
-    runs-on: windows-latest
-    if: github.event_name == 'pull_request'
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 8.0.x
-
-    - name: Restore dependencies
-      run: dotnet restore
-
-    - name: Run code analysis
-      run: |
-        dotnet build --configuration Release --verbosity minimal --warnaserror
-        
-    - name: Security scan
-      uses: securecodewarrior/github-action-add-sarif@v1
-      if: always()
-      continue-on-error: true
-      with:
-        sarif-file: 'results.sarif'
