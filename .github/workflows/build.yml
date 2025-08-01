@@ -3,10 +3,10 @@ name: Build AutoBSPpackingTool
 on:
   workflow_dispatch:
   push:
-    branches: [ master, dev ]
+    branches: [ main, dev ]
     tags: [ 'v*' ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
@@ -41,16 +41,11 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-nuget-
 
-    # NOVO: Adicionar o pacote System.Resources.Extensions
-    - name: Add System.Resources.Extensions package
-      run: dotnet add package System.Resources.Extensions --version 8.0.0
-
     - name: Restore dependencies
       run: dotnet restore
 
-    # MODIFICADO: Adicionar propriedade para recursos pré-serializados
     - name: Build solution
-      run: dotnet build --configuration ${{ matrix.configuration }} --no-restore --verbosity minimal -p:GenerateResourceUsePreserializedResources=true
+      run: dotnet build --configuration ${{ matrix.configuration }} --no-restore --verbosity minimal
 
     - name: Run tests (if any)
       run: |
@@ -62,11 +57,10 @@ jobs:
       shell: pwsh
       continue-on-error: true
 
-    # MODIFICADO: Adicionar propriedade no publish também
     - name: Publish application
       if: matrix.configuration == 'Release'
       run: |
-        dotnet publish --configuration Release --no-build --output ./publish --self-contained true --runtime win-x64 -p:GenerateResourceUsePreserializedResources=true
+        dotnet publish --configuration Release --no-build --output ./publish --self-contained true --runtime win-x64
         
     - name: Create portable package
       if: matrix.configuration == 'Release'
@@ -96,14 +90,9 @@ jobs:
       with:
         dotnet-version: 9.0.x
 
-    # NOVO: Adicionar o pacote System.Resources.Extensions no job release também
-    - name: Add System.Resources.Extensions package
-      run: dotnet add package System.Resources.Extensions --version 8.0.0
-
-    # MODIFICADO: Adicionar propriedade para recursos pré-serializados
     - name: Build and publish release
       run: |
-        dotnet publish --configuration Release --output ./release --self-contained true --runtime win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:GenerateResourceUsePreserializedResources=true
+        dotnet publish --configuration Release --output ./release --self-contained true --runtime win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
 
     - name: Create release package
       run: |
@@ -136,17 +125,12 @@ jobs:
       with:
         dotnet-version: 9.0.x
 
-    # NOVO: Adicionar o pacote System.Resources.Extensions no job code-analysis também
-    - name: Add System.Resources.Extensions package
-      run: dotnet add package System.Resources.Extensions --version 8.0.0
-
     - name: Restore dependencies
       run: dotnet restore
 
-    # MODIFICADO: Adicionar propriedade para recursos pré-serializados
     - name: Run code analysis
       run: |
-        dotnet build --configuration Release --verbosity minimal --warnaserror -p:GenerateResourceUsePreserializedResources=true
+        dotnet build --configuration Release --verbosity minimal --warnaserror
         
     - name: Security scan
       uses: securecodewarrior/github-action-add-sarif@v1
