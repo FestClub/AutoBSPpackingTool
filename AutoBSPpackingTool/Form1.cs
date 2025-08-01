@@ -397,6 +397,7 @@ namespace AutoBSPpackingTool
 		string input_bsp = "";
 		string input_vmf = "";
 		string vmf_name = "";
+		
 		public static string cache_path = PathCombine(Environment.CurrentDirectory, "cache");
 		public static string cfgs_path = PathCombine(Environment.CurrentDirectory, "game_cfgs");
 		public static string extracted_assets_path = PathCombine(cache_path, "extracted_assets");
@@ -412,7 +413,7 @@ namespace AutoBSPpackingTool
 					"csgo/pak01_dir.vpk",
 					"platform/platform_pak01_dir.vpk" //some tool textures are stored there
 				},
-				available_extra_files = new bool[]{true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true},
+				available_extra_files = new bool[]{true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, false},
 				available_settings = new bool[]{true, true, false},
 				assets_search_settings = new bool[]{false, true, true, true},
 				assets_search_order = new List<AssetsSearchOrderOption>
@@ -434,7 +435,7 @@ namespace AutoBSPpackingTool
 					"sourceengine/hl2_sound_misc_dir.vpk",
 					"sourceengine/hl2_sound_vo_english_dir.vpk"
 				},
-				available_extra_files = new bool[]{true, true, false, true, false, false, false, false, false, true, true, false, false, false, false, false, false, false, false},
+				available_extra_files = new bool[]{true, true, false, true, false, false, false, false, false, true, true, false, false, false, false, false, false, false, false, },
 				available_settings = new bool[]{true, false, true},
 				assets_search_settings = new bool[]{true, true, true, true},
 				assets_search_order = new List<AssetsSearchOrderOption>
@@ -455,7 +456,7 @@ namespace AutoBSPpackingTool
 					"portal2_dlc1/pak01_dir.vpk",
 					"portal2_dlc2/pak01_dir.vpk"
 				},
-				available_extra_files = new bool[]{false, false, false, true, false, false, false, false, false, true, true, false, false, false, false, false, false, false, false},
+				available_extra_files = new bool[]{false, false, false, true, false, false, false, false, false, true, true, false, false, false, false, false, false, false, false, false, false},
 				available_settings = new bool[]{true, true, true},
 				assets_search_settings = new bool[]{true, false, false, true},
 				assets_search_order = new List<AssetsSearchOrderOption>
@@ -463,7 +464,26 @@ namespace AutoBSPpackingTool
 					AssetsSearchOrderOption.MountedVPKs,
 					AssetsSearchOrderOption.MountedFolders
 				}
-			}
+			},
+			new GameInfo
+			{
+				game_folder = "Counter-Strike Source",
+				game_root_folder = "cstrike",
+				vpk_paths = new List<string>
+				{
+                    "cstrike/cstrike_pak_dir.vpk",
+                },
+                available_extra_files = new bool[]{true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true},
+                available_settings = new bool[]{true, true, true},
+                assets_search_settings = new bool[]{true, true, true, true},
+                assets_search_order = new List<AssetsSearchOrderOption>
+                {
+                    AssetsSearchOrderOption.OwnGameFolder,
+                    AssetsSearchOrderOption.OwnVPKs,
+                    AssetsSearchOrderOption.MountedVPKs,
+                    AssetsSearchOrderOption.MountedFolders
+                }
+            }
 		};
 		public List<GameInfo> games_info = games_info_default.Select(item => new GameInfo{game_folder = item.game_folder, game_root_folder = item.game_root_folder, vpk_paths = item.vpk_paths.ToList(), available_extra_files = item.available_extra_files.ToArray(), available_settings = item.available_settings.ToArray(), assets_search_settings = item.assets_search_settings.ToArray(), assets_search_order = item.assets_search_order.ToList()}).ToList();
 		//settings
@@ -517,7 +537,7 @@ namespace AutoBSPpackingTool
 
 		private void VoidLoad()
 		{
-			if(!cmd && !Debugger.IsAttached)
+            if (!cmd && !Debugger.IsAttached)
 			{
 				string repository_id = "858869233";
 				string user_agent = "AutoBSPpackingTool";
@@ -2251,7 +2271,30 @@ namespace AutoBSPpackingTool
 				string dz_spawn_mask = PathCombine("maps", vmf_name+"_spawnmask.png");
 				string dz_deployment_map = PathCombine("materials/panorama/images/survival/spawnselect", "map_"+vmf_name+".png");
 				string dz_tablet_map = PathCombine("materials/models/weapons/v_models/tablet", "tablet_radar_"+vmf_name+".vtf");
-				if(extra_files[(int)ExtraFiles.NavigationMesh] && FindFullFilePath(nav, ExtractOption.DontExtract).full_file_path != null)
+
+				string[] map_overview_textures =
+				{
+                     PathCombine("materials/overviews", vmf_name+".vmt"),
+                     PathCombine("materials/overviews", vmf_name+"_radar.vmt"),
+                     PathCombine("materials/overviews", vmf_name+".vtf"),
+                };
+
+				if (extra_files[(int)ExtraFiles.MapOverviewTexture])
+				{
+					HashSet<string> all_files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+					for(int i = 0; i < map_overview_textures.Length; i++)
+					{
+						string file_path = FindFullFilePath(map_overview_textures[i]).full_file_path;
+						if (file_path != null)
+						{
+                            Log(".vmt, .vtf (map radar textures) file was detected");
+							current_custom_files.Add(map_overview_textures[i]);
+						}
+					}
+				}
+
+                if (extra_files[(int)ExtraFiles.NavigationMesh] && FindFullFilePath(nav, ExtractOption.DontExtract).full_file_path != null)
 				{
 					current_custom_files.Add(nav);
 					Log(".nav (navigation mesh) file was detected");

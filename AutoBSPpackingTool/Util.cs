@@ -259,7 +259,10 @@ namespace AutoBSPpackingTool
 			DZDeployemtnMap = 17,
 
 			[TextField(".vtf (dz tablet map)")]
-			DZTabletMap = 18
+			DZTabletMap = 18,
+
+			[TextField(".vmt, .vtf (map radar textures)")]
+			MapOverviewTexture = 19,
 		}
 
 		public enum Settings
